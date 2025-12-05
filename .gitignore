@@ -1,0 +1,21 @@
+@"
+# Node
+node_modules/
+dist/
+build/
+
+# Vite / TypeScript
+.vite/
+out/
+*.tsbuildinfo
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Env / logs
+.env
+.env.local
+*.log
+"@ | Set-Content -LiteralPath .gitignore
