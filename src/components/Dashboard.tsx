@@ -1,7 +1,8 @@
 import React from 'react';
 import { Project, Task, ProjectStatus, TaskStatus } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Activity, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle, Clock, FileDown } from 'lucide-react';
+import { pdfService } from '../services/pdfService';
 
 interface DashboardProps {
     projects: Project[];
@@ -11,6 +12,7 @@ interface DashboardProps {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 
 const Dashboard: React.FC<DashboardProps> = ({ projects, tasks }) => {
+    const [isGeneratingPDF, setIsGeneratingPDF] = React.useState(false);
     const activeProjects = projects.filter(p => p.status === ProjectStatus.ACTIVE).length;
     const completedProjects = projects.filter(p => p.status === ProjectStatus.COMPLETED).length;
     const pendingTasks = tasks.filter(t => t.status !== TaskStatus.DONE).length;
@@ -47,12 +49,33 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, tasks }) => {
         </div>
     );
 
+    const handleDownloadReport = async () => {
+        setIsGeneratingPDF(true);
+        try {
+            await pdfService.generateDashboardReport({
+                projects,
+                tasks,
+                generatedAt: new Date()
+            });
+        } catch (error) {
+            console.error('Error generating PDF report:', error);
+            alert('Failed to generate PDF report. Please try again.');
+        } finally {
+            setIsGeneratingPDF(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold text-gray-900">Executive Dashboard</h1>
-                <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50">
-                    Download Report (PDF)
+                <button 
+                    onClick={handleDownloadReport}
+                    disabled={isGeneratingPDF}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <FileDown size={16} />
+                    {isGeneratingPDF ? 'Generating PDF...' : 'Download Report (PDF)'}
                 </button>
             </div>
 

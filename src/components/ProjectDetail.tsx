@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Project, Task, TaskStatus, ProjectLog } from '../types';
 import { generateProjectWBS, generateStatusReport } from '../services/geminiService';
 import { dbService } from '../services/dbService';
+import { pdfService } from '../services/pdfService';
 import { Calendar, CheckSquare, BarChart2, Plus, Wand2, FileDown, X, Link, GripVertical, ZoomIn, ZoomOut, Percent, PanelLeftClose, PanelLeftOpen, Search, Users, Settings, Clock, History } from 'lucide-react';
 import CollaboratorManagement from './CollaboratorManagement';
 
@@ -46,6 +47,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, currentUs
     const [showEditModal, setShowEditModal] = useState(false);
     const [editProject, setEditProject] = useState<Partial<Project>>({});
     const [wbsDraft, setWbsDraft] = useState<any[]>([]);
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
     const [viewMode, setViewMode] = useState<'comfortable' | 'compact'>('comfortable');
     const [showGanttSidebar, setShowGanttSidebar] = useState(true);
@@ -277,6 +279,23 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, currentUs
         setReportText(text);
     };
 
+    const handleDownloadPDF = async () => {
+        setIsGeneratingPDF(true);
+        try {
+            await pdfService.generateProjectReport({
+                project,
+                tasks,
+                reportText: reportText || undefined,
+                generatedAt: new Date()
+            });
+        } catch (error) {
+            console.error('Error generating PDF report:', error);
+            alert('Failed to generate PDF report. Please try again.');
+        } finally {
+            setIsGeneratingPDF(false);
+        }
+    };
+
     const toggleDependency = (taskId: string) => {
         setNewTask(prev => {
             const currentDeps = prev.dependencies || [];
@@ -441,10 +460,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, currentUs
                     <div className="p-6">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-semibold">Project Status Report</h3>
-                            <button onClick={handleGenerateReport} className="flex items-center gap-2 text-sm text-purple-700 bg-purple-50 px-3 py-2 rounded-lg hover:bg-purple-100">
-                                <Wand2 size={16} />
-                                Generate AI Report
-                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={handleGenerateReport} className="flex items-center gap-2 text-sm text-purple-700 bg-purple-50 px-3 py-2 rounded-lg hover:bg-purple-100">
+                                    <Wand2 size={16} />
+                                    Generate AI Report
+                                </button>
+                                <button 
+                                    onClick={handleDownloadPDF}
+                                    disabled={isGeneratingPDF}
+                                    className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <FileDown size={16} />
+                                    {isGeneratingPDF ? 'Generating...' : 'Download PDF'}
+                                </button>
+                            </div>
                         </div>
                         {reportText ? (
                             <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 prose prose-sm max-w-none">
