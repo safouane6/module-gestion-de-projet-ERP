@@ -100,21 +100,31 @@ function AppContent() {
         }
     };
 
-    const handleAddTask = async (t: Partial<Task>) => {
+    const handleAddTask = async (t: Partial<Task>): Promise<Task | undefined> => {
         try {
             const newTask = await dbService.addTask(t);
-            setTasks([...tasks, newTask]);
+            setTasks(prev => [...prev, newTask]);
+            return newTask;
         } catch (error) {
             console.error('Error adding task:', error);
         }
     };
 
-    const handleUpdateTask = async (taskId: string, updates: Partial<Task>) => {
+    const handleUpdateTask = async (taskId: string, updates: Partial<Task>): Promise<void> => {
         try {
             await dbService.updateTask(taskId, updates);
-            setTasks(tasks.map(t => t.id === taskId ? { ...t, ...updates } : t));
+            setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
         } catch (error) {
             console.error('Error updating task:', error);
+        }
+    };
+
+    const handleUpdateProject = async (projectId: string, updates: Partial<Project>): Promise<void> => {
+        try {
+            await dbService.updateProject(projectId, updates);
+            setProjects(prev => prev.map(p => p.id === projectId ? { ...p, ...updates } : p));
+        } catch (error) {
+            console.error('Error updating project:', error);
         }
     };
 
@@ -146,7 +156,9 @@ function AppContent() {
                     <ProjectDetailWrapper
                         projects={projects}
                         tasks={tasks}
+                        currentUser={profile}
                         onAddTask={handleAddTask}
+                        onUpdateProject={handleUpdateProject}
                         onUpdateTask={handleUpdateTask}
                     />
                 } />
@@ -168,7 +180,7 @@ function AppContent() {
     );
 }
 
-function ProjectDetailWrapper({ projects, tasks, onAddTask, onUpdateTask }: any) {
+function ProjectDetailWrapper({ projects, tasks, currentUser, onAddTask, onUpdateProject, onUpdateTask }: any) {
     const { id } = useParams();
     const project = projects.find((p: any) => p.id === id);
     if (!project) return <div>Project not found</div>;
@@ -176,8 +188,9 @@ function ProjectDetailWrapper({ projects, tasks, onAddTask, onUpdateTask }: any)
         <ProjectDetail
             project={project}
             tasks={tasks.filter((t: any) => t.projectId === project.id)}
+            currentUser={currentUser}
             onAddTask={onAddTask}
-            onUpdateProject={() => { }}
+            onUpdateProject={onUpdateProject}
             onUpdateTask={onUpdateTask}
         />
     );

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Project, ProjectStatus } from '../types';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search, Filter, Sparkles } from 'lucide-react';
+import ChatAssistant from './ChatAssistant';
 
 interface ProjectListProps {
     projects: Project[];
@@ -19,9 +20,10 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelectProject, on
         status: ProjectStatus.DRAFT
     });
     const [isGenerating, setIsGenerating] = React.useState(false);
+    const [isChatOpen, setIsChatOpen] = React.useState(false);
 
     const handleGenerateIdea = async () => {
-        if(!newProject.name) return;
+        if (!newProject.name) return;
         setIsGenerating(true);
         await new Promise(r => setTimeout(r, 1500));
         setNewProject(prev => ({
@@ -76,48 +78,48 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelectProject, on
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead className="bg-gray-50 text-gray-500 font-medium text-xs uppercase tracking-wider">
-                        <tr>
-                            <th className="px-6 py-4">Code</th>
-                            <th className="px-6 py-4">Project Name</th>
-                            <th className="px-6 py-4">Manager</th>
-                            <th className="px-6 py-4">Timeline</th>
-                            <th className="px-6 py-4">Budget</th>
-                            <th className="px-6 py-4">Status</th>
-                            <th className="px-6 py-4">Progress</th>
-                        </tr>
+                            <tr>
+                                <th className="px-6 py-4">Code</th>
+                                <th className="px-6 py-4">Project Name</th>
+                                <th className="px-6 py-4">Manager</th>
+                                <th className="px-6 py-4">Timeline</th>
+                                <th className="px-6 py-4">Budget</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">Progress</th>
+                            </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                        {projects.map((project) => (
-                            <tr
-                                key={project.id}
-                                onClick={() => onSelectProject(project.id)}
-                                className="hover:bg-blue-50 cursor-pointer transition-colors group"
-                            >
-                                <td className="px-6 py-4 text-sm font-medium text-gray-900">{project.code}</td>
-                                <td className="px-6 py-4">
-                                    <div className="text-sm font-semibold text-gray-900 group-hover:text-blue-600">{project.name}</div>
-                                    <div className="text-xs text-gray-500 truncate max-w-[200px]">{project.description}</div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-600">Bob Manager</td>
-                                <td className="px-6 py-4 text-sm text-gray-600">
-                                    {new Date(project.startDate).toLocaleDateString()} - {new Date(project.endDate).toLocaleDateString()}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 font-medium">${project.budget.toLocaleString()}</td>
-                                <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(project.status).replace('text', 'border-transparent')}`}>
-                      {project.status.replace('_', ' ')}
-                    </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-20 bg-gray-200 rounded-full h-2">
-                                            <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${project.progress}%` }}></div>
+                            {projects.map((project) => (
+                                <tr
+                                    key={project.id}
+                                    onClick={() => onSelectProject(project.id)}
+                                    className="hover:bg-blue-50 cursor-pointer transition-colors group"
+                                >
+                                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{project.code}</td>
+                                    <td className="px-6 py-4">
+                                        <div className="text-sm font-semibold text-gray-900 group-hover:text-blue-600">{project.name}</div>
+                                        <div className="text-xs text-gray-500 truncate max-w-[200px]">{project.description}</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-600">Bob Manager</td>
+                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                        {new Date(project.startDate).toLocaleDateString()} - {new Date(project.endDate).toLocaleDateString()}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-900 font-medium">${project.budget.toLocaleString()}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(project.status).replace('text', 'border-transparent')}`}>
+                                            {project.status.replace('_', ' ')}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-20 bg-gray-200 rounded-full h-2">
+                                                <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${project.progress}%` }}></div>
+                                            </div>
+                                            <span className="text-xs text-gray-500">{project.progress}%</span>
                                         </div>
-                                        <span className="text-xs text-gray-500">{project.progress}%</span>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
@@ -134,23 +136,24 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelectProject, on
                                     type="text"
                                     className="w-full border rounded-lg p-2"
                                     value={newProject.name}
-                                    onChange={e => setNewProject({...newProject, name: e.target.value})}
+                                    onChange={e => setNewProject({ ...newProject, name: e.target.value })}
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                                 <div className="relative">
-                    <textarea
-                        className="w-full border rounded-lg p-2 h-24"
-                        value={newProject.description}
-                        onChange={e => setNewProject({...newProject, description: e.target.value})}
-                        placeholder="Describe the project scope..."
-                    />
+                                    <textarea
+                                        className="w-full border rounded-lg p-2 h-24"
+                                        value={newProject.description}
+                                        onChange={e => setNewProject({ ...newProject, description: e.target.value })}
+                                        placeholder="Describe the project scope..."
+                                    />
                                     <button
-                                        onClick={handleGenerateIdea}
-                                        className="absolute bottom-2 right-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 flex items-center gap-1"
+                                        onClick={() => setIsChatOpen(true)}
+                                        className="absolute bottom-2 right-2 text-xs bg-purple-600 text-white px-3 py-1.5 rounded-full hover:bg-purple-700 flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95"
                                     >
-                                        {isGenerating ? 'Thinking...' : '✨ AI Assist'}
+                                        <Sparkles size={14} />
+                                        AI Assistant
                                     </button>
                                 </div>
                             </div>
@@ -161,7 +164,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelectProject, on
                                         type="number"
                                         className="w-full border rounded-lg p-2"
                                         value={newProject.budget}
-                                        onChange={e => setNewProject({...newProject, budget: parseInt(e.target.value)})}
+                                        onChange={e => setNewProject({ ...newProject, budget: parseInt(e.target.value) })}
                                     />
                                 </div>
                                 <div>
@@ -170,7 +173,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelectProject, on
                                         type="date"
                                         className="w-full border rounded-lg p-2"
                                         value={newProject.startDate}
-                                        onChange={e => setNewProject({...newProject, startDate: e.target.value})}
+                                        onChange={e => setNewProject({ ...newProject, startDate: e.target.value })}
                                     />
                                 </div>
                                 <div>
@@ -179,7 +182,7 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelectProject, on
                                         type="date"
                                         className="w-full border rounded-lg p-2"
                                         value={newProject.endDate}
-                                        onChange={e => setNewProject({...newProject, endDate: e.target.value})}
+                                        onChange={e => setNewProject({ ...newProject, endDate: e.target.value })}
                                     />
                                 </div>
                             </div>
@@ -196,6 +199,15 @@ const ProjectList: React.FC<ProjectListProps> = ({ projects, onSelectProject, on
                     </div>
                 </div>
             )}
+
+            <ChatAssistant
+                isOpen={isChatOpen}
+                onClose={() => setIsChatOpen(false)}
+                onApplyText={(text) => {
+                    setNewProject(prev => ({ ...prev, description: text }));
+                    setIsChatOpen(false);
+                }}
+            />
         </div>
     );
 };

@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Project, Task, TaskStatus } from '../types';
+import { Project, Task, TaskStatus, ProjectLog } from '../types';
 import { generateProjectWBS, generateStatusReport } from '../services/geminiService';
-import { Calendar, CheckSquare, BarChart2, Plus, Wand2, FileDown, X, Link, GripVertical, ZoomIn, ZoomOut, Percent, PanelLeftClose, PanelLeftOpen, Search, Users } from 'lucide-react';
+import { dbService } from '../services/dbService';
+import { Calendar, CheckSquare, BarChart2, Plus, Wand2, FileDown, X, Link, GripVertical, ZoomIn, ZoomOut, Percent, PanelLeftClose, PanelLeftOpen, Search, Users, Settings, Clock, History } from 'lucide-react';
 import CollaboratorManagement from './CollaboratorManagement';
 
 interface ProjectDetailProps {
     project: Project;
     tasks: Task[];
-    onAddTask: (task: Partial<Task>) => void;
-    onUpdateProject: (id: string, updates: Partial<Project>) => void;
-    onUpdateTask: (id: string, updates: Partial<Task>) => void;
+    currentUser: any;
+    onAddTask: (task: Partial<Task>) => Promise<Task | undefined>;
+    onUpdateProject: (id: string, updates: Partial<Project>) => Promise<void>;
+    onUpdateTask: (id: string, updates: Partial<Task>) => Promise<void>;
 }
 
 const parseDate = (str: string) => {
@@ -36,10 +38,14 @@ const TASK_STYLES = {
     [TaskStatus.DONE]: { base: 'bg-emerald-100 border-emerald-300', fill: 'bg-emerald-600', text: 'text-emerald-700' },
 };
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask, onUpdateProject, onUpdateTask }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'wbs' | 'gantt' | 'collaborators'>('overview');
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, currentUser, onAddTask, onUpdateProject, onUpdateTask }) => {
+    const [activeTab, setActiveTab] = useState<'overview' | 'wbs' | 'gantt' | 'collaborators' | 'logs'>('overview');
+    const [projectLogs, setProjectLogs] = useState<ProjectLog[]>([]);
     const [isGeneratingWBS, setIsGeneratingWBS] = useState(false);
     const [reportText, setReportText] = useState('');
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [editProject, setEditProject] = useState<Partial<Project>>({});
+    const [wbsDraft, setWbsDraft] = useState<any[]>([]);
 
     const [viewMode, setViewMode] = useState<'comfortable' | 'compact'>('comfortable');
     const [showGanttSidebar, setShowGanttSidebar] = useState(true);
@@ -56,6 +62,25 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
         dependencies: [],
         assigneeId: ''
     });
+
+    const refreshLogs = async () => {
+        try {
+            const logs = await dbService.getProjectLogs(project.id);
+            setProjectLogs(logs);
+        } catch (err) {
+            console.error("Error loading project logs:", err);
+        }
+    };
+
+    useEffect(() => {
+        refreshLogs();
+    }, [project.id]);
+
+    useEffect(() => {
+        if (activeTab === 'logs') {
+            refreshLogs();
+        }
+    }, [activeTab]);
 
     const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
     const [dragOffsetPixels, setDragOffsetPixels] = useState<number>(0);
@@ -85,6 +110,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
         onUpdateTask(taskId, {
             progress,
             status: newStatus
+        }).then(() => {
+            dbService.logProjectAction(
+                project.id,
+                currentUser?.id,
+                'UPDATE_PROGRESS',
+                { taskName: currentTask?.name, progress }
+            ).then(() => refreshLogs());
         });
     };
 
@@ -207,21 +239,36 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
         try {
             const generatedTasks = JSON.parse(jsonString);
             if (Array.isArray(generatedTasks)) {
-                generatedTasks.forEach(t => {
-                    onAddTask({
-                        name: t.name,
-                        projectId: project.id,
-                        status: TaskStatus.TODO,
-                        startDate: project.startDate,
-                        endDate: project.endDate,
-                        progress: 0
-                    });
-                });
+                setWbsDraft(generatedTasks);
             }
         } catch (e) {
             console.error("Failed to parse WBS", e);
         }
         setIsGeneratingWBS(false);
+    };
+
+    const handleAcceptDraft = async () => {
+        if (wbsDraft.length === 0) return;
+
+        for (const t of wbsDraft) {
+            await onAddTask({
+                name: t.name,
+                projectId: project.id,
+                status: TaskStatus.TODO,
+                startDate: project.startDate,
+                endDate: project.endDate,
+                progress: 0
+            });
+        }
+
+        await dbService.logProjectAction(
+            project.id,
+            currentUser?.id,
+            'GENERATE_WBS',
+            { count: wbsDraft.length }
+        );
+        refreshLogs();
+        setWbsDraft([]);
     };
 
     const handleGenerateReport = async () => {
@@ -246,6 +293,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
         onAddTask({
             ...newTask,
             projectId: project.id
+        }).then((task) => {
+            dbService.logProjectAction(
+                project.id,
+                currentUser?.id,
+                'ADD_TASK',
+                { taskId: task?.id || 'new', taskName: newTask.name }
+            ).then(() => refreshLogs());
         });
         setShowTaskModal(false);
         setNewTask({
@@ -258,6 +312,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
             assigneeId: ''
         });
         setDependencySearch('');
+    };
+
+    const handleSaveProjectEdit = () => {
+        onUpdateProject(project.id, editProject).then(() => {
+            dbService.logProjectAction(
+                project.id,
+                currentUser?.id,
+                'EDIT_PROJECT',
+                { changes: editProject }
+            ).then(() => refreshLogs());
+        });
+        setShowEditModal(false);
     };
 
     const projectDuration = Math.max(getDaysDiff(project.startDate, project.endDate), 1);
@@ -328,9 +394,21 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
                         </div>
                         <p className="text-gray-500 max-w-2xl">{project.description}</p>
                     </div>
-                    <div className="text-right">
-                        <p className="text-sm text-gray-500">Budget</p>
-                        <p className="text-xl font-bold text-gray-900">${project.budget.toLocaleString()}</p>
+                    <div className="flex gap-4 items-center">
+                        <div className="text-right">
+                            <p className="text-sm text-gray-500">Budget</p>
+                            <p className="text-xl font-bold text-gray-900">${project.budget.toLocaleString()}</p>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setEditProject(project);
+                                setShowEditModal(true);
+                            }}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-gray-100"
+                            title="Edit Project Settings"
+                        >
+                            <Settings size={20} />
+                        </button>
                     </div>
                 </div>
 
@@ -340,13 +418,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
                         { id: 'wbs', label: 'WBS & Tasks', icon: CheckSquare },
                         { id: 'gantt', label: 'Gantt Chart', icon: Calendar },
                         { id: 'collaborators', label: 'Collaborators', icon: Users },
+                        { id: 'logs', label: 'Activity Logs', icon: History },
                     ].map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
                             className={`flex items-center gap-2 pb-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeTab === tab.id
-                                    ? 'border-blue-600 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-blue-600 text-blue-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             <tab.icon size={18} />
@@ -391,7 +470,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
                                     className="flex items-center gap-2 px-3 py-1.5 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors"
                                 >
                                     <Wand2 size={16} />
-                                    {isGeneratingWBS ? 'Generating...' : 'AI Suggest Tasks'}
+                                    {isGeneratingWBS ? 'Generating Suggestions...' : 'AI Suggest Tasks'}
                                 </button>
                                 <button
                                     onClick={() => setShowTaskModal(true)}
@@ -402,6 +481,44 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
                                 </button>
                             </div>
                         </div>
+
+                        {wbsDraft.length > 0 && (
+                            <div className="mb-8 bg-purple-50 border border-purple-100 rounded-xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+                                <div className="p-4 bg-purple-100/50 flex justify-between items-center border-b border-purple-100">
+                                    <div className="flex items-center gap-2 text-purple-800 font-bold">
+                                        <Wand2 size={18} />
+                                        AI Suggested WBS Draft
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setWbsDraft([])}
+                                            className="px-3 py-1 text-xs font-medium text-purple-600 hover:text-purple-800 transition-colors"
+                                        >
+                                            Discard
+                                        </button>
+                                        <button
+                                            onClick={handleAcceptDraft}
+                                            className="px-4 py-1.5 text-xs font-bold bg-purple-600 text-white rounded-lg hover:bg-purple-700 shadow-md shadow-purple-200 transition-all active:scale-95"
+                                        >
+                                            Accept & Add all {wbsDraft.length} Tasks
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="p-4 overflow-x-auto">
+                                    <div className="flex gap-3 flex-wrap">
+                                        {wbsDraft.map((t, idx) => (
+                                            <div key={idx} className="bg-white px-3 py-2 rounded-lg border border-purple-100 shadow-sm flex items-center gap-2 text-sm text-purple-900">
+                                                <span className="w-5 h-5 rounded-full bg-purple-50 flex items-center justify-center text-[10px] font-bold text-purple-400 border border-purple-100">
+                                                    {idx + 1}
+                                                </span>
+                                                <span className="font-medium">{t.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="border rounded-lg overflow-x-auto">
                             <table className="w-full text-sm text-left min-w-[600px]">
                                 <thead className="bg-gray-50 text-gray-700 font-medium">
@@ -437,8 +554,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
                                             </td>
                                             <td className="px-4 py-3">
                                                 <span className={`px-2 py-0.5 rounded text-xs border ${t.status === TaskStatus.DONE ? 'bg-green-50 text-green-700 border-green-200' :
-                                                        t.status === TaskStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                                            'bg-gray-50 text-gray-600 border-gray-200'
+                                                    t.status === TaskStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                                        'bg-gray-50 text-gray-600 border-gray-200'
                                                     }`}>
                                                     {t.status}
                                                 </span>
@@ -547,7 +664,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
 
                                 <div className="relative flex-1">
                                     <div className={`absolute inset-0 flex pointer-events-none transition-all duration-300 ${showGanttSidebar ? 'left-32 md:left-56' : 'left-0'}`}>
-                                        {timelineDates.map((date, i) => (
+                                        {timelineDates.map((_, i) => (
                                             <div key={i} className="border-r border-gray-100 h-full" style={{ width: pxPerDay }}></div>
                                         ))}
                                     </div>
@@ -696,7 +813,69 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
                 )}
 
                 {activeTab === 'collaborators' && (
-                    <CollaboratorManagement projectId={project.id} />
+                    <CollaboratorManagement
+                        projectId={project.id}
+                        currentUser={currentUser}
+                        onAction={refreshLogs}
+                    />
+                )}
+
+                {activeTab === 'logs' && (
+                    <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden min-h-[400px]">
+                        <div className="p-4 bg-white border-b border-gray-200 flex justify-between items-center">
+                            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                                <History size={18} className="text-blue-600" />
+                                Project Activity History
+                            </h3>
+                            <button onClick={refreshLogs} className="p-1.5 text-gray-400 hover:text-blue-600 rounded transition-colors" title="Refresh Logs">
+                                <Clock size={16} />
+                            </button>
+                        </div>
+                        <div className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
+                            {projectLogs.length === 0 && (
+                                <div className="text-center py-12 text-gray-500 italic">
+                                    No activity recorded yet for this project.
+                                </div>
+                            )}
+                            {projectLogs.map((log) => (
+                                <div key={log.id} className="flex gap-4 p-4 bg-white rounded-lg border border-gray-100 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-all">
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 opacity-20 group-hover:opacity-100 transition-opacity"></div>
+                                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold shrink-0">
+                                        {log.userName?.charAt(0)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-start mb-1 gap-2">
+                                            <p className="text-sm font-bold text-gray-900 truncate">
+                                                {log.userName}
+                                            </p>
+                                            <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap bg-gray-50 px-2 py-0.5 rounded border">
+                                                {new Date(log.createdAt).toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-700 flex flex-wrap items-center gap-1.5">
+                                            <span className="font-semibold text-blue-600 px-1.5 py-0.5 bg-blue-50 rounded border border-blue-100">
+                                                {log.action.replace(/_/g, ' ')}
+                                            </span>
+                                            {log.details.taskName && <span>on <span className="font-medium text-gray-900 italic">"{log.details.taskName}"</span></span>}
+                                            {log.details.progress !== undefined && <span>to <span className="font-bold text-gray-900">{log.details.progress}%</span></span>}
+                                            {log.details.count !== undefined && <span>({log.details.count} items)</span>}
+                                            {log.details.userName && <span>for <span className="font-medium text-gray-900">{log.details.userName}</span></span>}
+                                        </p>
+                                        {log.details.changes && (
+                                            <div className="mt-2 text-[10px] text-gray-500 bg-gray-50 p-2 rounded border border-dashed border-gray-200 flex flex-wrap gap-x-4 gap-y-1">
+                                                {Object.entries(log.details.changes).map(([k, v]: [string, any]) => (
+                                                    <span key={k} className="flex gap-1.5">
+                                                        <span className="capitalize text-gray-400 font-medium">{k}:</span>
+                                                        <span className="text-gray-900 font-semibold">{String(v)}</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -738,6 +917,93 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, tasks, onAddTask
                                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm font-medium"
                             >
                                 Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showEditModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-gray-900">Edit Project Settings</h2>
+                            <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-gray-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                                <input
+                                    type="text"
+                                    className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={editProject.name}
+                                    onChange={e => setEditProject({ ...editProject, name: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                <textarea
+                                    className="w-full border rounded-lg p-2.5 h-32 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    value={editProject.description}
+                                    onChange={e => setEditProject({ ...editProject, description: e.target.value })}
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Budget ($)</label>
+                                    <input
+                                        type="number"
+                                        className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={editProject.budget}
+                                        onChange={e => setEditProject({ ...editProject, budget: parseInt(e.target.value) })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                                    <select
+                                        className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                        value={editProject.status}
+                                        onChange={e => setEditProject({ ...editProject, status: e.target.value as any })}
+                                    >
+                                        <option value="DRAFT">Draft</option>
+                                        <option value="ACTIVE">Active</option>
+                                        <option value="ON_HOLD">On Hold</option>
+                                        <option value="COMPLETED">Completed</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                                    <input
+                                        type="date"
+                                        className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={editProject.startDate}
+                                        onChange={e => setEditProject({ ...editProject, startDate: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                                    <input
+                                        type="date"
+                                        className="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={editProject.endDate}
+                                        onChange={e => setEditProject({ ...editProject, endDate: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 flex justify-end gap-3">
+                            <button onClick={() => setShowEditModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors font-medium">Cancel</button>
+                            <button
+                                onClick={handleSaveProjectEdit}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md font-medium transition-colors"
+                            >
+                                Save Changes
                             </button>
                         </div>
                     </div>

@@ -14,11 +14,15 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, tasks }) => {
     const activeProjects = projects.filter(p => p.status === ProjectStatus.ACTIVE).length;
     const completedProjects = projects.filter(p => p.status === ProjectStatus.COMPLETED).length;
     const pendingTasks = tasks.filter(t => t.status !== TaskStatus.DONE).length;
+    const totalBudget = projects.reduce((acc, p) => acc + p.budget, 0);
+    const totalSpent = projects.reduce((acc, p) => acc + (p.budget * (p.progress / 100)), 0);
+    const utilization = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+    const overdueTasks = tasks.filter(t => t.status !== TaskStatus.DONE && new Date(t.endDate) < new Date()).length;
 
     const budgetData = projects.map(p => ({
         name: p.code,
         budget: p.budget,
-        spent: p.budget * (p.progress / 100) * (Math.random() * 0.4 + 0.8)
+        spent: p.budget * (p.progress / 100)
     }));
 
     const statusData = [
@@ -53,10 +57,10 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, tasks }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="Active Projects" value={activeProjects} icon={Activity} color="bg-blue-500" subtext="+2 from last month"/>
-                <StatCard title="Budget Utilization" value="$1.2M" icon={CheckCircle} color="bg-green-500" subtext="85% of allocated funds"/>
-                <StatCard title="Pending Tasks" value={pendingTasks} icon={Clock} color="bg-orange-500" subtext="12 overdue"/>
-                <StatCard title="Critical Risks" value="3" icon={AlertTriangle} color="bg-red-500" subtext="Requires immediate attention"/>
+                <StatCard title="Active Projects" value={activeProjects} icon={Activity} color="bg-blue-500" subtext={`${completedProjects} completed total`} />
+                <StatCard title="Budget Utilization" value={`$${(totalSpent / 1000).toFixed(1)}K`} icon={CheckCircle} color="bg-green-500" subtext={`${utilization}% of $${(totalBudget / 1000).toFixed(1)}K`} />
+                <StatCard title="Pending Tasks" value={pendingTasks} icon={Clock} color="bg-orange-500" subtext={`${overdueTasks} overdue`} />
+                <StatCard title="Change Requests" value={projects.length > 0 ? "Healthy" : "N/A"} icon={AlertTriangle} color="bg-red-500" subtext="No critical blockers" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

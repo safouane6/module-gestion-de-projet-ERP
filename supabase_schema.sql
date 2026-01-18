@@ -101,3 +101,15 @@ ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
 -- Simple Policies
 CREATE POLICY "Public Access" ON public.project_members FOR ALL USING (true);
 
+-- 7. Project Logs (Activity Stream)
+CREATE TABLE public.project_logs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    details JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.project_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public Access Logs" ON public.project_logs FOR ALL USING (true);

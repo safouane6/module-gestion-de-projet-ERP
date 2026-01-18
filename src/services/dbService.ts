@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { Project, Task, ChangeRequest, TimesheetEntry } from '../types';
+import { Project, Task, ChangeRequest, TimesheetEntry, ProjectLog } from '../types';
 
 export const dbService = {
     // Profiles
@@ -25,7 +25,7 @@ export const dbService = {
                 .eq('user_id', userId);
 
             if (memberError) throw memberError;
-            const projectIds = memberProjects.map(mp => mp.project_id);
+            const projectIds = memberProjects.map((mp: any) => mp.project_id);
             query = query.in('id', projectIds);
         }
 
@@ -33,7 +33,7 @@ export const dbService = {
 
         if (error) throw error;
 
-        return data.map(p => ({
+        return data.map((p: any) => ({
             id: p.id,
             code: p.code,
             name: p.name,
@@ -80,6 +80,22 @@ export const dbService = {
         };
     },
 
+    async updateProject(projectId: string, updates: Partial<Project>): Promise<void> {
+        const { error } = await supabase
+            .from('projects')
+            .update({
+                name: updates.name,
+                description: updates.description,
+                start_date: updates.startDate,
+                end_date: updates.endDate,
+                status: updates.status,
+                budget: updates.budget,
+                progress: updates.progress
+            })
+            .eq('id', projectId);
+        if (error) throw error;
+    },
+
     // Tasks
     async getTasks(projectId?: string): Promise<Task[]> {
         let query = supabase.from('tasks').select('*');
@@ -88,7 +104,7 @@ export const dbService = {
         const { data, error } = await query;
         if (error) throw error;
 
-        return data.map(t => ({
+        return data.map((t: any) => ({
             id: t.id,
             projectId: t.project_id,
             name: t.name,
@@ -156,7 +172,7 @@ export const dbService = {
 
         if (error) throw error;
 
-        return data.map(cr => ({
+        return data.map((cr: any) => ({
             id: cr.id,
             projectId: cr.project_id,
             title: cr.title,
@@ -179,7 +195,7 @@ export const dbService = {
 
         if (error) throw error;
 
-        return data.map(ts => ({
+        return data.map((ts: any) => ({
             id: ts.id,
             userId: ts.user_id,
             projectId: ts.project_id,
@@ -223,5 +239,35 @@ export const dbService = {
             .update({ role })
             .eq('id', memberId);
         if (error) throw error;
+    },
+
+    // Project Logging Methods
+    async logProjectAction(projectId: string, userId: string, action: string, details: any = {}): Promise<void> {
+        if (!userId || userId.length < 5) return; // Skip logging for mock/none users
+        await supabase.from('project_logs').insert([{
+            project_id: projectId,
+            user_id: userId,
+            action: action,
+            details: details
+        }]);
+    },
+
+    async getProjectLogs(projectId: string): Promise<ProjectLog[]> {
+        const { data, error } = await supabase
+            .from('project_logs')
+            .select('*, profiles(name)')
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data.map((d: any) => ({
+            id: d.id,
+            projectId: d.project_id,
+            userId: d.user_id,
+            action: d.action,
+            details: d.details,
+            createdAt: d.created_at,
+            userName: d.profiles?.name || 'Unknown User'
+        }));
     }
 };
